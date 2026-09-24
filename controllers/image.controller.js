@@ -1,5 +1,6 @@
 const Image = require("../models/Image");
 const { uploadToCloudinary, deleteFromCloudinary } = require("../config/cloudinary");
+const escapeRegex = (text) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 const uploadImage = async (req, res) => {
   let uploaded;
@@ -30,7 +31,6 @@ const uploadImage = async (req, res) => {
 
     res.status(201).json(image);
   } catch (error) {
-
     if (uploaded?.public_id) {
       await deleteFromCloudinary(uploaded.public_id).catch(() => {});
     }
@@ -42,25 +42,35 @@ const getImages = async (req, res) => {
   try {
     const filter = { albumId: req.album._id };
 
+    // Tag search (partial match):
+    //   ?tags=bea      -> tags that START WITH "bea" (beach, beauty...)
+    //   ?tags=bea,sun  -> tags starting with "bea" OR "sun"
+    // Tags are saved in lowercase, so the search text is lowercased too.
     const { tags } = req.query;
     if (tags) {
-      const tagList = tags
+      const tagList = String(tags)
         .split(",")
         .map((t) => t.trim().toLowerCase())
         .filter(Boolean);
 
       if (tagList.length > 0) {
-        filter.tags = { $in: tagList };
+        filter.tags = {
+          $in: tagList.map((t) => new RegExp("^" + escapeRegex(t)))
+        };
       }
     }
 
-    const page = Math.max(parseInt(req.query.page) || 1, 1);
-    const limit = Math.min(Math.max(parseInt(req.query.limit) || 20, 1), 50);
+    // Pagination: ?page=1&limit=20 (limit is kept between 1 and 50)
+    const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
+    const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 20, 1), 50);
     const skip = (page - 1) * limit;
 
-
     const [images, total] = await Promise.all([
-      Image.find(filter).sort({ uploadedAt: -1 }).skip(skip).limit(limit).populate("comments.userId", "name avatar"),
+      Image.find(filter)
+        .sort({ uploadedAt: -1 })
+        .skip(skip)
+        .limit(limit)
+        .populate("comments.userId", "name avatar"),
       Image.countDocuments(filter)
     ]);
 
@@ -81,7 +91,9 @@ const getFavoriteImages = async (req, res) => {
     const images = await Image.find({
       albumId: req.album._id,
       isFavorite: true
-    }).sort({ uploadedAt: -1 }).populate("comments.userId", "name avatar");
+    })
+      .sort({ uploadedAt: -1 })
+      .populate("comments.userId", "name avatar");
 
     res.status(200).json(images);
   } catch (error) {
