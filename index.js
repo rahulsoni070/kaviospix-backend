@@ -6,6 +6,7 @@ const connectDB = require("./config/db");
 const { protect } = require("./middleware/auth");
 const { notFound, errorHandler } = require("./middleware/errorHandler");
 const { apiLimiter } = require("./middleware/rateLimit");
+const userRoutes = require("./routes/user.routes");
 
 require("./config/passport");
 
@@ -34,6 +35,7 @@ app.get("/api/me", protect, (req, res) => {
   res.json(req.user);
 });
 
+app.use("/api/users", userRoutes);
 app.use("/auth", require("./routes/auth.routes"));
 app.use("/api/albums", require("./routes/album.routes"));
 app.use("/api/albums/:albumId/images", require("./routes/image.routes"));
